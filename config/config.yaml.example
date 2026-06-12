@@ -1,0 +1,56 @@
+# Wakepy Configuration Example
+# Copy this file to ~/.wakepy/config.yaml and customize
+
+alarm:
+  sound_path: ~/.wakepy/sounds/
+  default_snooze: 5
+  24h_format: true
+  persistent: true
+  check_interval: 10  # seconds
+
+storage:
+  file: ~/.wakepy/alarms.yaml
+
+# Email notification settings
+email:
+  enabled: false
+  smtp_server: smtp.gmail.com
+  smtp_port: 587
+  username: your-email@gmail.com
+  # IMPORTANT: Use an app password for Gmail!
+  # Generate at: https://myaccount.google.com/apppasswords
+  password: ${ALARM_EMAIL_PASSWORD}
+  from_name: "Wakepy Alarm"
+  default_subject: "Alarm: {name} at {time}"
+
+# Twilio SMS/Voice settings
+twilio:
+  enabled: false
+  account_sid: ${TWILIO_ACCOUNT_SID}
+  auth_token: ${TWILIO_AUTH_TOKEN}
+  from_number: ${TWILIO_FROM_NUMBER}
+
+# Webhook settings
+webhooks:
+  discord:
+    default_url: ${DISCORD_WEBHOOK_URL}
+  slack:
+    default_url: ${SLACK_WEBHOOK_URL}
+
+# Desktop notifications
+notifications:
+  desktop: true
+  osd: true
+
+# Advanced features
+advanced:
+  wake_challenge: false
+  gradual_volume: false
+  pre_alarm_warning: 0  # minutes (0 = disabled)
+  statistics: true
+  stats_file: ~/.wakepy/statistics.json
+
+# Daemon settings
+daemon:
+  pid_file: ~/.wakepy/wakepy.pid
+  log_file: ~/.wakepy/wakepy.log
