@@ -1,6 +1,7 @@
 """Main CLI entry point for wakepy."""
 
 import sys
+import time
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -121,6 +122,14 @@ def create(
     one_time: Annotated[
         bool, typer.Option("--one-time", help="Delete after triggering")
     ] = False,
+    tags: Annotated[
+        Optional[str],
+        typer.Option("--tags", "-t", help="Comma-separated tags for grouping"),
+    ] = None,
+    timezone: Annotated[
+        str,
+        typer.Option("--timezone", "-tz", help="Timezone (e.g., 'America/New_York')"),
+    ] = "local",
 ) -> None:
     """Create a new alarm.
 
@@ -170,6 +179,11 @@ def create(
     # Always add desktop notification
     actions.append(Action(type="desktop", target=""))
 
+    # Parse tags
+    tag_list = []
+    if tags:
+        tag_list = [t.strip() for t in tags.split(",")]
+
     # Create alarm
     alarm = Alarm(
         name=name or f"Alarm at {alarm_time}",
@@ -180,6 +194,8 @@ def create(
         sound=sound,
         actions=actions,
         one_time=one_time,
+        tags=tag_list,
+        timezone=timezone,
     )
 
     manager.add_alarm(alarm)
@@ -188,23 +204,35 @@ def create(
     console.print(f"  Time: {format_alarm_time(alarm_time, cfg.get('alarm', '24h_format', default=True))}")
     console.print(f"  Repeat: {get_repeat_description(repeat, day_list)}")
     console.print(f"  ID: {alarm.id}")
+    if tag_list:
+        console.print(f"  Tags: {', '.join(tag_list)}")
 
 
 # List alarms command
 @app.command("list")
 def list_alarms(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show detailed info")] = False,
+    tag: Annotated[Optional[str], typer.Option("--tag", help="Filter by tag")] = None,
+    enabled: Annotated[Optional[bool], typer.Option("--enabled/--disabled", help="Filter by status")] = None,
 ) -> None:
     """List all alarms.
 
     Examples:
         wake list
         wake list --verbose
+        wake list --tag work
+        wake list --enabled
     """
     manager = get_alarm_manager()
     cfg = get_global_config()
 
     alarms = manager.get_all_alarms()
+
+    # Apply filters
+    if tag is not None:
+        alarms = [a for a in alarms if tag in a.tags]
+    if enabled is not None:
+        alarms = [a for a in alarms if a.enabled == enabled]
 
     if not alarms:
         console.print("[yellow]No alarms found.[/yellow]")
@@ -218,6 +246,7 @@ def list_alarms(
     table.add_column("Name")
     table.add_column("Time")
     table.add_column("Repeat")
+    table.add_column("Tags", style="dim")
     table.add_column("Status")
 
     for alarm in alarms:
@@ -230,6 +259,7 @@ def list_alarms(
             alarm.name or "-",
             time_display,
             repeat_desc,
+            ", ".join(alarm.tags) if alarm.tags else "-",
             status,
         )
 
@@ -240,9 +270,12 @@ def list_alarms(
         for alarm in alarms:
             console.print(f"\n[cyan]{alarm.name}[/cyan] ({alarm.id})")
             console.print(f"  Time: {alarm.time}")
+            console.print(f"  Repeat: {get_repeat_description(alarm.repeat, alarm.days)}")
             console.print(f"  Enabled: {alarm.enabled}")
             console.print(f"  Snooze: {alarm.snooze} minutes")
             console.print(f"  One-time: {alarm.one_time}")
+            if alarm.tags:
+                console.print(f"  Tags: {', '.join(alarm.tags)}")
             if alarm.actions:
                 console.print(f"  Actions:")
                 for action in alarm.actions:
@@ -275,6 +308,8 @@ def show(
     console.print(f"Snooze: {alarm.snooze} minutes")
     console.print(f"Sound: {alarm.sound}")
     console.print(f"One-time: {'Yes' if alarm.one_time else 'No'}")
+    if alarm.tags:
+        console.print(f"Tags: {', '.join(alarm.tags)}")
     console.print()
 
     if alarm.actions:
@@ -298,6 +333,18 @@ def edit(
         Optional[int],
         typer.Option("--snooze", "-s", help="New snooze duration")
     ] = None,
+    tags: Annotated[
+        Optional[str],
+        typer.Option("--tags", "-t", help="Replace tags (comma-separated)"),
+    ] = None,
+    add_tags: Annotated[
+        Optional[str],
+        typer.Option("--add-tags", help="Add tags (comma-separated)"),
+    ] = None,
+    remove_tags: Annotated[
+        Optional[str],
+        typer.Option("--remove-tags", help="Remove tags (comma-separated)"),
+    ] = None,
 ) -> None:
     """Edit an existing alarm.
 
@@ -319,6 +366,22 @@ def edit(
     if name is not None:
         alarm.name = name
         changes.append("name")
+
+    if tags is not None:
+        alarm.tags = [t.strip() for t in tags.split(",")]
+        changes.append("tags")
+
+    if add_tags is not None:
+        new_tags = [t.strip() for t in add_tags.split(",")]
+        for tag in new_tags:
+            if tag not in alarm.tags:
+                alarm.tags.append(tag)
+        changes.append("added tags")
+
+    if remove_tags is not None:
+        tags_to_remove = [t.strip() for t in remove_tags.split(",")]
+        alarm.tags = [t for t in alarm.tags if t not in tags_to_remove]
+        changes.append("removed tags")
 
     if time is not None:
         try:
@@ -536,7 +599,7 @@ def test_twilio() -> None:
 
 
 # Config command
-@app.command()
+@app.command("config")
 def config_cmd(
     key: Annotated[Optional[str], typer.Option("--key", "-k", help="Config key")] = None,
     value: Annotated[Optional[str], typer.Option("--value", "-v", help="Config value")] = None,
@@ -576,6 +639,174 @@ def version() -> None:
         wake version
     """
     console.print(f" wakepy v{__version__} ")
+
+
+# Timer command
+@app.command("timer")
+def timer_cmd(
+    duration: Annotated[str, typer.Argument(help="Duration (e.g., 5m, 1h, 30m)")],
+    name: Annotated[Optional[str], typer.Option("--name", "-n", help="Timer name")] = None,
+    silent: Annotated[bool, typer.Option("--silent", "-s", help="Run without progress bar")] = False,
+) -> None:
+    """Start a countdown timer.
+
+    Examples:
+        wake timer 5m
+        wake timer 1h --name "Focus session"
+        wake timer 30m --silent
+    """
+    from wakepy.timer import CountdownTimer, parse_duration
+
+    minutes = parse_duration(duration)
+    if minutes <= 0:
+        console.print("[red]Error:[/red] Invalid duration")
+        raise typer.Exit(1)
+
+    timer = CountdownTimer(minutes, name or "", silent)
+    timer.start()
+
+
+# Stopwatch command
+@app.command()
+def stopwatch(
+    action: Annotated[
+        str,
+        typer.Argument(help="Action: start, stop, reset, status"),
+    ] = "status",
+) -> None:
+    """Stopwatch functionality.
+
+    Examples:
+        wake stopwatch start
+        wake stopwatch stop
+        wake stopwatch reset
+        wake stopwatch status
+    """
+    from wakepy.timer import Stopwatch
+
+    # For simplicity, we'll use a new instance each time
+    # In a real implementation, you'd persist the state
+    if action == "start":
+        stopwatch = Stopwatch()
+        stopwatch.start()
+        console.print("\nPress Ctrl+C to stop...")
+        try:
+            while True:
+                time.sleep(1)
+                stopwatch._display()
+        except KeyboardInterrupt:
+            stopwatch.stop()
+    elif action == "stop":
+        console.print("[yellow]Note: Stopwatch state is not persistent[/yellow]")
+        console.print("Use 'wake stopwatch start' and stop with Ctrl+C")
+    elif action == "reset":
+        console.print("[yellow]Note: Stopwatch state is not persistent[/yellow]")
+    elif action == "status":
+        console.print("[yellow]Note: Stopwatch state is not persistent[/yellow]")
+        console.print("Use 'wake stopwatch start' to begin")
+    else:
+        console.print(f"[red]Unknown action:[/red] {action}")
+        raise typer.Exit(1)
+
+
+# World clock command
+@app.command()
+def worldclock(
+    add: Annotated[
+        Optional[str],
+        typer.Option("--add", "-a", help="Add timezone to display"),
+    ] = None,
+    list_zones: Annotated[
+        bool,
+        typer.Option("--list", "-l", help="List available timezones"),
+    ] = False,
+) -> None:
+    """Show world clock in multiple timezones.
+
+    Examples:
+        wake worldclock
+        wake worldclock --add America/New_York
+        wake worldclock --add Europe/London --add Asia/Tokyo
+    """
+    from datetime import datetime
+    from rich.table import Table
+    import pytz
+
+    if list_zones:
+        console.print("[bold]Common timezones:[/bold]")
+        common_zones = [
+            "America/New_York",
+            "America/Los_Angeles",
+            "America/Chicago",
+            "Europe/London",
+            "Europe/Paris",
+            "Europe/Berlin",
+            "Asia/Tokyo",
+            "Asia/Shanghai",
+            "Asia/Dubai",
+            "Australia/Sydney",
+        ]
+        for zone in common_zones:
+            console.print(f"  {zone}")
+        return
+
+    # Default zones to show
+    zones = ["UTC", "America/New_York", "Europe/London", "Asia/Tokyo"]
+
+    if add:
+        zones.append(add)
+
+    table = Table(title="World Clock")
+    table.add_column("Timezone")
+    table.add_column("Current Time")
+    table.add_column("Offset")
+
+    utc_now = datetime.now(pytz.UTC)
+
+    for zone in zones:
+        try:
+            tz = pytz.timezone(zone)
+            local_time = utc_now.astimezone(tz)
+            offset = local_time.strftime("%z")
+            time_str = local_time.strftime("%H:%M:%S")
+            table.add_row(zone, time_str, offset)
+        except Exception as e:
+            table.add_row(zone, f"[red]Error: {e}[/red]", "-")
+
+    console.print(table)
+
+
+# Pomodoro command
+@app.command()
+def pomodoro(
+    work: Annotated[
+        int,
+        typer.Option("--work", "-w", help="Work duration in minutes"),
+    ] = 25,
+    break_duration: Annotated[
+        int,
+        typer.Option("--break", "-b", help="Break duration in minutes"),
+    ] = 5,
+    sessions: Annotated[
+        int,
+        typer.Option("--sessions", "-s", help="Number of work sessions"),
+    ] = 4,
+) -> None:
+    """Start a Pomodoro timer.
+
+    Examples:
+        wake pomodoro
+        wake pomodoro --work 50 --break 10
+        wake pomodoro --sessions 2
+    """
+    from wakepy.timer import PomodoroTimer
+
+    pomodoro = PomodoroTimer(
+        work_minutes=work,
+        break_minutes=break_duration,
+        sessions=sessions,
+    )
+    pomodoro.run()
 
 
 def main() -> None:

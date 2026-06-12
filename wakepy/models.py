@@ -53,6 +53,7 @@ class Alarm:
     actions: list[Action] = field(default_factory=list)
     timezone: str = "local"
     one_time: bool = False  # Delete after triggering
+    tags: list[str] = field(default_factory=list)  # Tags for grouping/organizing
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -69,6 +70,7 @@ class Alarm:
             "actions": [a.to_dict() for a in self.actions],
             "timezone": self.timezone,
             "one_time": self.one_time,
+            "tags": self.tags,
             "metadata": self.metadata,
         }
 
@@ -88,6 +90,7 @@ class Alarm:
             actions=actions,
             timezone=data.get("timezone", "local"),
             one_time=data.get("one_time", False),
+            tags=data.get("tags", []),
             metadata=data.get("metadata", {}),
         )
 
