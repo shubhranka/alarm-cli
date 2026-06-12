@@ -967,5 +967,40 @@ def main() -> None:
     app()
 
 
+# Completion command (hidden, for installation)
+@app.command(hidden=True)
+def completion(
+    shell: Annotated[
+        str,
+        typer.Argument(help="Shell type (bash or zsh)"),
+    ] = ...,
+) -> None:
+    """Install shell completion.
+
+    Examples:
+        wake completion bash > ~/.bash_completion.d/wake.sh
+        wake completion zsh > ~/.zfunc/_wake
+    """
+    from pathlib import Path
+
+    if shell == "bash":
+        # Get the completion script from package
+        completion_path = Path(__file__).parent / "completion" / "wake.bash"
+        if completion_path.exists():
+            print(completion_path.read_text())
+        else:
+            print("# Bash completion script not found")
+    elif shell == "zsh":
+        completion_path = Path(__file__).parent / "completion" / "wake.zsh"
+        if completion_path.exists():
+            print(completion_path.read_text())
+        else:
+            print("# Zsh completion script not found")
+    else:
+        console.print(f"[red]Error:[/red] Unsupported shell: {shell}")
+        console.print("Supported shells: bash, zsh")
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":
     main()

@@ -8,8 +8,12 @@ Wakepy is a powerful command-line alarm clock that runs in the background and ca
 
 - 🕐 **Flexible Time Input**: `08:00`, `8:00am`, `in 30m`, `in 1h 30m`
 - 🔁 **Repeat Patterns**: Once, daily, weekdays, weekends, or custom days
+- 🏷️ **Tags & Groups**: Organize alarms with tags
 - 🔔 **Multiple Notifications**: Email, SMS, voice calls, Discord, Slack
 - 🖥️ **Desktop Notifications**: Native OS notifications
+- ⏱️ **Timers**: Countdown, stopwatch, Pomodoro, world clock
+- 📊 **Statistics**: Track alarm triggers and snoozes
+- 💾 **Import/Export**: Backup and restore alarm configurations
 - 🔄 **Background Daemon**: Runs as a background service
 - 💾 **Persistent Storage**: Alarms saved across restarts
 
@@ -66,6 +70,46 @@ wake create 08:00 --name "Wake up"
 |---------|-------------|
 | `wake test-email <addr>` | Test email configuration |
 | `wake test-twilio` | Test Twilio configuration |
+| `wake test-webhook <url>` | Test webhook configuration |
+
+### Timer Commands
+
+| Command | Description |
+|---------|-------------|
+| `wake timer <duration>` | Countdown timer |
+| `wake stopwatch` | Stopwatch (start/stop/reset) |
+| `wake worldclock` | World clock in multiple timezones |
+| `wake pomodoro` | Pomodoro technique timer |
+
+### Utility Commands
+
+| Command | Description |
+|---------|-------------|
+| `wake stats` | Show alarm statistics |
+| `wake export` | Export alarms to file |
+| `wake import <file>` | Import alarms from file |
+| `wake config` | Show/set configuration |
+
+## Shell Completion
+
+Install shell completion for better CLI experience:
+
+### Bash
+```bash
+# Add to ~/.bashrc or ~/.bash_completion.d/wake.sh
+wake completion bash > ~/.bash_completion.d/wake.sh
+source ~/.bash_completion.d/wake.sh
+```
+
+### Zsh
+```bash
+# Add to ~/.zfunc/_wake
+wake completion zsh > ~/.zfunc/_wake
+
+# Add to ~/.zshrc
+fpath=(~/.zfunc $fpath)
+autoload -U compinit && compinit
+```
 
 ## Examples
 
