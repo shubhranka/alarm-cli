@@ -169,12 +169,26 @@ def create(
     if call:
         actions.append(Action(type="call", target=call))
 
+    # Handle webhooks - use from config if not specified
     if webhook:
         platform = "discord" if "discord" in webhook.lower() else "generic"
         actions.append(Action(type="webhook", target=webhook, metadata={"platform": platform}))
+    elif cfg.get("webhooks", "discord", "default_url"):
+        # Use default Discord webhook from config
+        actions.append(Action(
+            type="webhook",
+            target=cfg.get("webhooks", "discord", "default_url"),
+            metadata={"platform": "discord"},
+        ))
 
     if slack_webhook:
         actions.append(Action(type="slack", target=slack_webhook))
+    elif cfg.get("webhooks", "slack", "default_url"):
+        # Use default Slack webhook from config
+        actions.append(Action(
+            type="slack",
+            target=cfg.get("webhooks", "slack", "default_url"),
+        ))
 
     # Always add desktop notification
     actions.append(Action(type="desktop", target=""))
@@ -598,6 +612,47 @@ def test_twilio() -> None:
     notifier.test()
 
 
+@app.command("test-webhook")
+def test_webhook_cmd(
+    url: Annotated[str, typer.Argument(help="Webhook URL to test")] = ...,
+    platform: Annotated[
+        str,
+        typer.Option("--platform", "-p", help="Platform: discord, slack, or generic"),
+    ] = "auto",
+) -> None:
+    """Test webhook configuration.
+
+    Examples:
+        wake test-webhook https://discord.com/api/webhooks/...
+        wake test-webhook https://hooks.slack.com/... --platform slack
+    """
+    from wakepy.notifications.webhook import WebhookNotifier
+
+    cfg = get_global_config()
+    webhook_notifier = WebhookNotifier(cfg.config)
+
+    # Auto-detect platform if needed
+    if platform == "auto":
+        platform = webhook_notifier.detect_platform(url)
+
+    console.print(f"Testing webhook to: {url[:50]}...")
+    console.print(f"Platform: {platform}")
+
+    success = webhook_notifier.send_alarm_notification(
+        alarm_name="Test Alarm",
+        alarm_time="12:00",
+        webhook_url=url,
+        platform=platform,
+        custom_message="This is a test notification from Wakepy.",
+    )
+
+    if success:
+        console.print("[green]✓[/green] Test webhook sent successfully")
+    else:
+        console.print("[red]✗[/red] Failed to send test webhook")
+        raise typer.Exit(1)
+
+
 # Config command
 @app.command("config")
 def config_cmd(
@@ -807,6 +862,104 @@ def pomodoro(
         sessions=sessions,
     )
     pomodoro.run()
+
+
+# Statistics command
+@app.command("stats")
+def stats_cmd(
+    reset: Annotated[bool, typer.Option("--reset", help="Reset all statistics")] = False,
+    history: Annotated[
+        int,
+        typer.Option("--history", "-h", help="Show N recent history entries"),
+    ] = 0,
+) -> None:
+    """Show alarm statistics.
+
+    Examples:
+        wake stats
+        wake stats --history 5
+        wake stats --reset
+    """
+    from wakepy.statistics import Statistics
+
+    cfg = get_global_config()
+    stats_file = cfg.get("advanced", "stats_file", default="~/.wakepy/statistics.json")
+
+    stats = Statistics(stats_file)
+
+    if reset:
+        if typer.confirm("Are you sure you want to reset all statistics?"):
+            stats.reset()
+        return
+
+    if history > 0:
+        entries = stats.get_history(history)
+        if entries:
+            console.print(f"[bold]Recent History (last {len(entries)}):[/bold]")
+            for entry in reversed(entries):
+                timestamp = entry.get("timestamp", "")[:19]
+                event_type = entry.get("type", "unknown")
+                alarm_name = entry.get("alarm_name", "Unknown")
+                console.print(f"  [{timestamp}] {event_type.title()}: {alarm_name}")
+        else:
+            console.print("No history available")
+    else:
+        stats.display_summary()
+
+
+# Export command
+@app.command("export")
+def export_cmd(
+    output: Annotated[
+        Optional[str],
+        typer.Option("--output", "-o", help="Output file path"),
+    ] = None,
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Export format (yaml or json)"),
+    ] = "yaml",
+) -> None:
+    """Export alarms to a file.
+
+    Examples:
+        wake export
+        wake export --output backup.yaml
+        wake export --format json --output backup.json
+    """
+    from wakepy.import_export import ImportExport
+
+    cfg = get_global_config()
+    alarms_file = cfg.storage_file
+
+    ImportExport.export_alarms(alarms_file, output, format)
+
+
+# Import command
+@app.command("import")
+def import_cmd(
+    import_file: Annotated[str, typer.Argument(help="File to import from")],
+    merge: Annotated[
+        bool,
+        typer.Option("--merge/--replace", help="Merge with existing or replace all"),
+    ] = True,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Show what would be imported without importing"),
+    ] = False,
+) -> None:
+    """Import alarms from a file.
+
+    Examples:
+        wake import backup.yaml
+        wake import backup.yaml --replace
+        wake import backup.yaml --dry-run
+    """
+    from wakepy.import_export import ImportExport
+
+    cfg = get_global_config()
+    alarms_file = cfg.storage_file
+
+    ImportExport.import_alarms(import_file, alarms_file, merge, dry_run)
 
 
 def main() -> None:

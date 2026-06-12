@@ -49,6 +49,7 @@ advanced:
   pre_alarm_warning: 0  # minutes (0 = disabled)
   statistics: true
   stats_file: ~/.wakepy/statistics.json
+  import_export_backup: true  # Auto-backup before import
 
 # Daemon settings
 daemon:
